@@ -1,6 +1,9 @@
 package cn.crduer.util;
 
-import java.util.*;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -11,63 +14,34 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class ExpiryMap<K, V> extends ConcurrentHashMap<K, V> {
 
-    private static final long serialVersionUID = 1L;
-
     /**
-     * default expiry time 2m
+     * 默认过期时间(毫秒)
+     * <br/>
+     * 即put的时候不指定过期时间,则采用此值作为过期时间
      */
-    private long expiry = 1000 * 60 * 2;
+    private long expiry;
 
-    private HashMap<K, Long> expiryMap = new HashMap<>();
-    /**
-     * 执行任务之前的延迟（以毫秒为单位）
-     */
-    private long delay = 1000;
+    private Map<K, Long> expiryMap = new ConcurrentHashMap<>();
 
-    /**
-     * 连续任务执行之间的时间（以毫秒为单位）
-     */
-    private long period = 1000;
-
-    /**
-     * 定时任务
-     */
-    private Timer timer;
 
     /**
      * @param expiryTime 单位毫秒（不可小于0）
      */
     public ExpiryMap(long expiryTime) {
-        this(1 << 4, expiryTime, 3000, 3000);
-    }
-    public ExpiryMap(long expiryTime, long delay, long period) {
-        this(1 << 4, expiryTime, delay, period);
+
+        this(1 << 4, expiryTime);
     }
 
     /**
      * @param initialCapacity 初始容量
      * @param expiryTime      单位毫秒
      */
-    private ExpiryMap(int initialCapacity, long expiryTime, long delay, long period) {
+    public ExpiryMap(int initialCapacity, long expiryTime) {
         super(initialCapacity);
         if (expiryTime <= 0) {
             throw new RuntimeException();
         }
         this.expiry = expiryTime;
-        this.delay = delay;
-        this.period = period;
-        Object o = this;
-        timer = new Timer();
-        TimerTask task = new TimerTask() {
-            @Override
-            public void run() {
-                ExpiryMap<K, V> expiryMap = (ExpiryMap<K, V>) o;
-                Set<Entry<K, V>> set = expiryMap.entrySet();
-                set.removeIf(entry -> checkExpiry(entry.getKey(), false));
-            }
-        };
-        // 延迟 1s 固定时延每隔 1s 周期打印一次
-        timer.schedule(task, this.delay, this.period);
     }
 
     @Override
@@ -94,12 +68,12 @@ public class ExpiryMap<K, V> extends ConcurrentHashMap<K, V> {
 
     @Override
     public int size() {
-        return entrySet().size();
+        return super.size();
     }
 
     @Override
     public boolean isEmpty() {
-        return entrySet().size() == 0;
+        return size() == 0;
     }
 
     @Override
@@ -108,6 +82,9 @@ public class ExpiryMap<K, V> extends ConcurrentHashMap<K, V> {
             return Boolean.FALSE;
         }
         Set<Entry<K, V>> set = super.entrySet();
+        if (set == null) {
+            return Boolean.FALSE;
+        }
         Iterator<Entry<K, V>> iterator = set.iterator();
         while (iterator.hasNext()) {
             Entry<K, V> entry = iterator.next();
@@ -177,7 +154,9 @@ public class ExpiryMap<K, V> extends ConcurrentHashMap<K, V> {
     @Override
     public Set<Entry<K, V>> entrySet() {
         Set<Entry<K, V>> set = super.entrySet();
-        set.removeIf(entry -> checkExpiry(entry.getKey(), false));
+        if (set != null) {
+            set.removeIf(entry -> checkExpiry(entry.getKey(), false));
+        }
         return set;
     }
 
@@ -196,7 +175,6 @@ public class ExpiryMap<K, V> extends ConcurrentHashMap<K, V> {
                 super.remove(key);
             }
             expiryMap.remove(key);
-            System.out.println("remove " + key);
         }
         return flag;
     }
